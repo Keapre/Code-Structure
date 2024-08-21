@@ -1,0 +1,1 @@
+Structura de cod de tip subscriber publisher pt eficienta la update-uri si full logging
