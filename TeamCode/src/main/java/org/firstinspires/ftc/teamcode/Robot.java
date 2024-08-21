@@ -41,6 +41,7 @@ public class Robot implements OpModeManagerNotifier.Notifications, GlobalWarning
     public MovingStatistics top250, top100, top10;
     public Map<Subsystem, MovingStatistics> top100Subsystems = new HashMap<>();
 
+    public double hzLimit = 100;
     private boolean started;
 
     private static double getCurrentTime() {
@@ -49,9 +50,16 @@ public class Robot implements OpModeManagerNotifier.Notifications, GlobalWarning
 
     private Runnable subsystemUpdateRunnable = () -> {
         double startTime, temp;
+        long finish,lastFinish;
+        boolean runNext = true;
         while (!Thread.currentThread().isInterrupted()) {
+            startTime = getCurrentTime();
+            if(!runNext) {
+                runNext = true;
+                continue;
+            }
             try {
-                startTime = getCurrentTime(); // Get start time of update
+                 // Get start time of update
 //                hub1.clearBulkCache();
 //                hub2.clearBulkCache();
 //                hub1.getBulkData();
@@ -70,10 +78,13 @@ public class Robot implements OpModeManagerNotifier.Notifications, GlobalWarning
                             subsystemsWithProblems.add(subsystem);
                     }
                 }
+
                 temp = getCurrentTime() - startTime; // Calculate loop time
+                if( temp / 1000.0 < hzLimit) runNext = false;
                 top10.add(temp); // Add loop time to different statistics
                 top100.add(temp);
                 top250.add(temp);
+
             } catch (Throwable t) {
                 Log.wtf(TAG, t); // If we get here, then something really weird happened.
             }

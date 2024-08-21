@@ -1,4 +1,4 @@
-package org.firstinspires.ftc.teamcode.Utils;
+package org.firstinspires.ftc.teamcode.Utils.pubSub;
 
 import java.util.Comparator;
 import java.util.PriorityQueue;
@@ -32,6 +32,7 @@ public class UpdateQueue {
     public void run() {
         while (!pq.isEmpty()) {
             pq.peek().action.run();
+            pq.poll();
         }
     }
 }
