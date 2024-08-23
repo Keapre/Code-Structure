@@ -1,32 +1,22 @@
 package org.firstinspires.ftc.teamcode.Subsystem.Drive;
 
+import com.acmerobotics.dashboard.canvas.Canvas;
 
-import androidx.annotation.NonNull;
-
-import com.acmerobotics.roadrunner.geometry.Pose2d;
 import com.arcrobotics.ftclib.controller.PIDFController;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
+import com.qualcomm.robotcore.hardware.Gamepad;
 import com.qualcomm.robotcore.hardware.HardwareMap;
-import com.qualcomm.robotcore.hardware.PIDCoefficients;
 
-
-
-import com.acmerobotics.roadrunner.drive.MecanumDrive;
-import com.qualcomm.robotcore.hardware.PIDFCoefficients;
-
-
-import org.firstinspires.ftc.teamcode.Subsystem.Drive.Localizer.Localizer;
 import org.firstinspires.ftc.teamcode.Subsystem.Sensors;
 import org.firstinspires.ftc.teamcode.Utils.Control.CustomFilteredPIDFCoefficients;
-import org.firstinspires.ftc.teamcode.Utils.Control.DualPidDt;
+import org.firstinspires.ftc.teamcode.Utils.Dashboard.TelemetryUtil;
 import org.firstinspires.ftc.teamcode.Utils.Utils;
 import org.firstinspires.ftc.teamcode.Utils.Wrappers.SmoothMotor;
 import org.firstinspires.ftc.teamcode.Utils.geometry.DriveVector;
 import org.firstinspires.ftc.teamcode.Utils.geometry.Pose;
 import org.firstinspires.ftc.teamcode.Utils.geometry.PoseUpdater;
-import org.firstinspires.ftc.teamcode.Utils.geometry.Vector;
 import org.firstinspires.ftc.teamcode.Utils.pubSub.Subsystem;
 import org.firstinspires.ftc.teamcode.Utils.Control.FilteredPIDFController;
 
@@ -75,7 +65,8 @@ public class DriveTrain extends Subsystem {
         MANUAL,
         PID,
         BRAKE,
-        FINAL_ADJUSTEMENT
+        FINAL_ADJUSTEMENT,
+        WAIT_AT_POINT
     }
 
     // leftFront, leftRear, rightRear, rightFront
@@ -88,7 +79,8 @@ public class DriveTrain extends Subsystem {
     public RunMode runMode;
     Sensors sensors;
 
-    double tolerancePoint = 2;
+    double tolerancePoint = 1.5;
+    boolean transvitive = false;
     public DriveTrain(HardwareMap hardwareMap, Pose start, Sensors sensors) {
         this.sensors = sensors;
         leftFront = new SmoothMotor(hardwareMap.get(DcMotorEx.class,"leftFront"),sensors);
@@ -107,16 +99,33 @@ public class DriveTrain extends Subsystem {
     }
 
 
-    public boolean reachedTarget() {
-        if(runMode == RunMode.BRAKE) return true;
-        return (xError < xThreeshold && yError < yTreeshold) || Utils.calculateDistanceBetweenPoints(poseUpdater.getPose(),targetPose) < tolerancePoint;
-    }
-
-    public boolean reachedHeading(){
+    public boolean reachedTarget(){
         if(runMode == RunMode.BRAKE) return true;
 
-        return Math.abs(turnError) < headingThreeshold;
+        if(Utils.calculateDistanceBetweenPoints(poseUpdater.getPose(),targetPose) <= tolerancePoint) {
+            return true;
+        }
+
+        if(finalAdjustment && runMode != RunMode.PID) {
+            return Math.abs(xError) < xThreeshold && Math.abs(yError) < yTreeshold && Math.abs(turnError) < Math.toRadians(finalheadingThreeshold);
+        }
+
+        if(transvitive) {
+            //putem sa avem restrici mai mici pentru x si y
+            return Math.abs(xError) < xThreeshold * 3  && Math.abs(yError) < yTreeshold * 3 && Math.abs(turnError) < Math.toRadians(headingThreeshold);
+        }
+
+        return Math.abs(xError) < xThreeshold && Math.abs(yError) < yTreeshold && Math.abs(turnError) < Math.toRadians(headingThreeshold);
     }
+
+    public boolean atPointThresholds (double xThresh, double yThresh, double headingThresh) {
+        return Math.abs(xError) < xThresh && Math.abs(yError) < yThresh && Math.abs(turnError) < Math.toRadians(headingThresh);
+    }
+//    public boolean reachedHeading(){
+//        if(runMode == RunMode.BRAKE) return true;
+//
+//        return Math.abs(turnError) < headingThreeshold;
+//    }
 
     boolean finalAdjustment = false;
     public void setModeMotors() {
@@ -133,8 +142,9 @@ public class DriveTrain extends Subsystem {
         if(runMode == RunMode.PID) this.UPDATABLE = true;
     }
 
-    public void goToPoint(Pose targetPose,boolean adjustement){
+    public void goToPoint(Pose targetPose,boolean adjustement,boolean transitive){
         this.finalAdjustment = adjustement;
+        this.transvitive = transitive;
         setTargetPose(targetPose);
         runMode = RunMode.PID;
     }
@@ -151,9 +161,9 @@ public class DriveTrain extends Subsystem {
 
 
     public void updateState() {
-
-        calculateErrors();
         poseUpdater.update();
+        calculateErrors();
+        updateTelemetry();
         switch (runMode){
             case MANUAL:
                 powerVector = new DriveVector(targetVector.getX(), targetVector.getY(), targetVector.getZ());
@@ -163,7 +173,7 @@ public class DriveTrain extends Subsystem {
             case PID:
                 setMinPowersToOvercomeFriction();
                 PIDF();
-                if(reachedTarget()) {
+                if(reachedTarget()){
                     if(finalAdjustment) {
                         finalTurnPID.clearTotalError();
                         perfectHeadingTimeStart = System.currentTimeMillis();
@@ -185,11 +195,23 @@ public class DriveTrain extends Subsystem {
                 break;
             case BRAKE:
                 powerVector = new DriveVector(0,0,0);
+                runMode = RunMode.WAIT_AT_POINT;
                 break;
+            case WAIT_AT_POINT:
+                if(atPointThresholds(1.5,1.5,1.5)) {
+                    resetIntegrals();
+                    runMode = RunMode.PID;
+                }
             default:
                 break;
         }
 
+    }
+
+    public void resetIntegrals() {
+        xPid.resetIntegral();
+        yPid.resetIntegral();
+        headingPid.resetIntegral();
     }
     public void calculateErrors() {
         double deltaX = targetPose.getX() - poseUpdater.getPose().getX();
@@ -203,6 +225,43 @@ public class DriveTrain extends Subsystem {
             turnError -= Math.PI * 2 * Math.signum(turnError);
         }
     }
+    public double smoothControls(double value) {
+        return 0.5*Math.tan(1.12*value);
+    }
+    public void drive(Gamepad gamepad) {
+        resetMinPowersToOvercomeFriction();
+        runMode = RunMode.MANUAL;
+
+        double forward = smoothControls(gamepad.left_stick_y);
+        double strafe = smoothControls(gamepad.left_stick_x);
+        double turn = smoothControls(-gamepad.right_stick_x);
+
+        DriveVector drive = new DriveVector(forward,strafe);
+        if (drive.getMagnitude() <= 0.05){
+            drive.scaleBy(0);
+        }
+        drive = new DriveVector(drive.getX(),drive.getY(),turn);
+    }
+    public boolean isBusy() {
+        return runMode != RunMode.WAIT_AT_POINT;
+    }
+    public void updateTelemetry () {
+        TelemetryUtil.packet.put("Drivetrain State", runMode);
+
+        TelemetryUtil.packet.put("xError", xError);
+        TelemetryUtil.packet.put("yError", yError);
+        TelemetryUtil.packet.put("turnError (deg)", Math.toDegrees(turnError));
+
+//        TelemetryUtil.packet.put("maxPower", maxPower);
+
+        TelemetryUtil.packet.fieldOverlay().setStroke("red");
+        TelemetryUtil.packet.fieldOverlay().strokeCircle(targetPose.getX(), targetPose.getY(), xThreeshold);
+
+        Canvas canvas = TelemetryUtil.packet.fieldOverlay();
+        canvas.setStroke("blue");
+        canvas.strokeLine(poseUpdater.getPose().getX(), poseUpdater.getPose().getY(), targetPose.getX(), targetPose.getY());
+    }
+
     public void PIDF() {
         double globalXError = targetPose.getX() - poseUpdater.getPose().getX();
         double globalYError = targetPose.getY() - poseUpdater.getPose().getY();
