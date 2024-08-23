@@ -1,10 +1,11 @@
-package org.firstinspires.ftc.teamcode.Subsystem.Intake.drive.localization;
+package org.firstinspires.ftc.teamcode.Subsystem.Drive.Localizer;
 
 import com.acmerobotics.dashboard.config.Config;
 import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.IMU;
+import com.qualcomm.robotcore.util.ElapsedTime;
 
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.teamcode.Utils.GameStatitics.NanoTimer;
@@ -36,9 +37,6 @@ import org.firstinspires.ftc.teamcode.Utils.geometry.Vector;
  *    \--------------/
  *      front (x pos)
  *
- * @author Logan Nash
- * @author Anyi Lin - 10158 Scott's Bots
- * @version 1.0, 7/9/2024
  */
 @Config
 public class ThreeWheelIMULocalizer extends Localizer {
@@ -64,8 +62,13 @@ public class ThreeWheelIMULocalizer extends Localizer {
     public static double STRAFE_TICKS_TO_INCHES = -0.003127403096038503;//8192 * 1.37795 * 2 * Math.PI * 0.5018874659;
     public static double TURN_TICKS_TO_RADIANS = 0.002995;//8192 * 1.37795 * 2 * Math.PI * 0.5;
 
+    ElapsedTime timerImu = new ElapsedTime();
+    double updateImuThreeshold = 1000; // 1 sec
     public static boolean useIMU = true;
 
+    IMU.Parameters imuParameters = new IMU.Parameters(new RevHubOrientationOnRobot(
+            RevHubOrientationOnRobot.LogoFacingDirection.LEFT,
+            RevHubOrientationOnRobot.UsbFacingDirection.UP));
     /**
      * This creates a new ThreeWheelIMULocalizer from a HardwareMap, with a starting Pose at (0,0)
      * facing 0 heading.
@@ -87,8 +90,9 @@ public class ThreeWheelIMULocalizer extends Localizer {
         hardwareMap = map;
         imu = hardwareMap.get(IMU.class, "imu");
 
+        timerImu.reset();
         // TODO: replace this with your IMU's orientation
-        imu.initialize(new IMU.Parameters(new RevHubOrientationOnRobot(RevHubOrientationOnRobot.LogoFacingDirection.LEFT, RevHubOrientationOnRobot.UsbFacingDirection.UP)));
+        imu.initialize(imuParameters);
 
         // TODO: replace these with your encoder positions
         leftEncoderPose = new Pose(-3, 5.7, 0);
@@ -188,10 +192,23 @@ public class ThreeWheelIMULocalizer extends Localizer {
      * change position of the Encoders. Then, the robot's global change in position is calculated
      * using the pose exponential method.
      */
+    public synchronized void resetImu(){
+        imu.resetDeviceConfigurationForOpMode();
+        imu.initialize(imuParameters);
+        imu.resetYaw();
+    }
+
     @Override
     public void update() {
         deltaTimeNano = timer.getElapsedTime();
         timer.resetTimer();
+
+        if(timerImu.milliseconds() < updateImuThreeshold) {
+            useIMU = false;
+        }else {
+            useIMU = true;
+            timerImu.reset();
+        }
 
         updateEncoders();
         Matrix robotDeltas = getRobotDeltas();

@@ -6,9 +6,9 @@ import com.qualcomm.robotcore.hardware.PIDCoefficients;
 public class DualPidDt {
 
 
-    public final PIDController aggpid;
-    public final PIDController chillpid;
-    public PIDController currentPid;
+    public final FilteredPIDFController aggpid;
+    public final FilteredPIDFController chillpid;
+    public FilteredPIDFController currentPid;
     double integralSumLimit = 0;
     public double target;
     public double lastTarget;
@@ -22,9 +22,9 @@ public class DualPidDt {
     public static double tolerance = 3;
     double loopTime = 0;
     double threeshold = 0;
-    public DualPidDt(PIDCoefficients agressiveCoeffiecent,PIDCoefficients chillCoeffiecent) {
-        aggpid = new PIDController(agressiveCoeffiecent.p,agressiveCoeffiecent.i,agressiveCoeffiecent.d);
-        chillpid = new PIDController(chillCoeffiecent.p,chillCoeffiecent.i,chillCoeffiecent.d);
+    public DualPidDt(CustomFilteredPIDFCoefficients agressiveCoeffiecent,CustomFilteredPIDFCoefficients chillCoeffiecent) {
+        aggpid = new FilteredPIDFController(agressiveCoeffiecent);
+        chillpid = new FilteredPIDFController(chillCoeffiecent);
     }
 
     public double getThreeshold() {
@@ -56,8 +56,9 @@ public class DualPidDt {
         if(error < threeshold) currentPid = chillpid;
         else currentPid = aggpid;
 
-        currentPid.setSetPoint(target);
-        return currentPid.calculate(current);
+        currentPid.setTargetPosition(target);
+        currentPid.updatePosition(current);
+        return currentPid.runPIDF();
     }
 
 }

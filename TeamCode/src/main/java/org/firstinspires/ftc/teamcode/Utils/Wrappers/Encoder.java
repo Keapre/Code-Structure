@@ -7,9 +7,6 @@ import com.qualcomm.robotcore.hardware.DcMotorSimple;
 /**
  * This is the Encoder class. This tracks the position of a motor of class DcMotorEx. The motor
  * must have an encoder attached. It can also get changes in position.
- *
- * @author Anyi Lin - 10158 Scott's Bots
- * @version 1.0, 4/2/2024
  */
 public class Encoder {
     private DcMotorEx motor;

@@ -5,7 +5,7 @@ import android.util.Log;
 
 import com.acmerobotics.dashboard.FtcDashboard;
 import com.acmerobotics.dashboard.config.Config;
-import com.acmerobotics.roadrunner.Pose2d;
+
 import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.OpModeManagerNotifier;
@@ -14,7 +14,9 @@ import com.qualcomm.robotcore.util.MovingStatistics;
 import com.qualcomm.robotcore.util.RobotLog;
 import com.qualcomm.robotcore.util.ThreadPool;
 
-import org.firstinspires.ftc.teamcode.Utils.Subsystem;
+
+import org.firstinspires.ftc.teamcode.Utils.geometry.Pose;
+import org.firstinspires.ftc.teamcode.Utils.pubSub.Subsystem;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -30,7 +32,7 @@ public class Robot implements OpModeManagerNotifier.Notifications, GlobalWarning
 
     String chubName = "Control Hub";
     String ehubName = "Expansion Hub 5";
-    Pose2d start = new Pose2d(0,0,Math.toRadians(90));
+    Pose start = new Pose(0,0,Math.toRadians(90));
     private LynxModule hub1;
     private LynxModule hub2;
 
@@ -100,7 +102,7 @@ public class Robot implements OpModeManagerNotifier.Notifications, GlobalWarning
         dashboard = FtcDashboard.getInstance();
         dashboard.setTelemetryTransmissionInterval(25);
 
-        hub1 = opMode.hardwareMap.get(LynxModule.class, chubName;
+        hub1 = opMode.hardwareMap.get(LynxModule.class, chubName);
         hub2 = opMode.hardwareMap.get(LynxModule.class, ehubName);
 
         hub1.setBulkCachingMode(LynxModule.BulkCachingMode.AUTO);

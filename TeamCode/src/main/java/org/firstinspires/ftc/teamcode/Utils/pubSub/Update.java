@@ -1,14 +1,17 @@
 package org.firstinspires.ftc.teamcode.Utils.pubSub;
 
+import java.util.List;
+
 public class Update {
     Runnable action;
     double basePriority;
+    List<Subsystem> subsystemList;
 
     //String description;
 
-    public Update(Runnable action,double priority) {
+    public Update(List<Subsystem> actuated,Runnable action) {
+        this.subsystemList = actuated;
         this.action = action;
-        this.basePriority = priority;
     }
 
     public Runnable getAction() {
@@ -19,4 +22,7 @@ public class Update {
         return this.basePriority;
     }
 
+    public List<Subsystem> getSubsystems() {
+        return this.subsystemList;
+    }
 }

@@ -3,6 +3,8 @@ package org.firstinspires.ftc.teamcode.Utils;
 
 import com.acmerobotics.roadrunner.geometry.Pose2d;
 
+import org.firstinspires.ftc.teamcode.Utils.geometry.Pose;
+
 public class Utils {
     public Utils() {}
 
@@ -32,7 +34,7 @@ public class Utils {
         return (value1 * (1.0-value2Weight)) + (value2 * value2Weight);
     }
 
-    public static double calculateDistanceBetweenPoints (Pose2d point1, Pose2d point2) {
+    public static double calculateDistanceBetweenPoints (Pose point1, Pose point2) {
         double deltaX = point1.getX() - point2.getX() ;
         double deltaY = point1.getY()  - point2.getY() ;
         return Math.sqrt(Math.pow(deltaX, 2) + Math.pow(deltaY, 2));

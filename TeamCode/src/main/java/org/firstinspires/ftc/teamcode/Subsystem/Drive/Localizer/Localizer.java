@@ -1,8 +1,14 @@
-package org.firstinspires.ftc.teamcode.Subsystem.Intake.drive.localization;
+package org.firstinspires.ftc.teamcode.Subsystem.Drive.Localizer;
+
 
 import org.firstinspires.ftc.teamcode.Utils.geometry.Pose;
 import org.firstinspires.ftc.teamcode.Utils.geometry.Vector;
 
+/**
+ * This is the Localizer class. It is an abstract superclass of all localizers used in Pedro Pathing,
+ * so it contains abstract methods that will have a concrete implementation in the subclasses. Any
+ * method that all localizers will need will be in this class.
+ */
 public abstract class Localizer {
 
     /**

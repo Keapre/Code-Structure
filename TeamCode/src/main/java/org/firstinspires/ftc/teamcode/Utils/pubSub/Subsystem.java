@@ -1,8 +1,12 @@
 package org.firstinspires.ftc.teamcode.Utils.pubSub;
 
+import java.util.List;
+
 public class Subsystem {
     public boolean UPDATABLE = false;
-    public void update(){};
+    public void update(){
+        noUpdate();
+    };
 
     public void stop(){};
     public void enable(){};
@@ -14,4 +18,6 @@ public class Subsystem {
     public void noUpdate() {
         UPDATABLE = false;
     }
+
+
 }

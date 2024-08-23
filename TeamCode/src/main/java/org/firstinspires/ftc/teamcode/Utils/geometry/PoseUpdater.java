@@ -5,20 +5,10 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.IMU;
 
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
+import org.firstinspires.ftc.teamcode.Subsystem.Drive.Localizer.Localizer;
+import org.firstinspires.ftc.teamcode.Subsystem.Drive.Localizer.ThreeWheelIMULocalizer;
 
-import org.firstinspires.ftc.teamcode.Subsystem.Intake.drive.localization.Localizer;
-import org.firstinspires.ftc.teamcode.Subsystem.Intake.drive.localization.ThreeWheelIMULocalizer;
 
-
-/**
- * This is the PoseUpdater class. This class handles getting pose data from the localizer and returning
- * the information in a useful way to the Follower.
- *
- * @author Anyi Lin - 10158 Scott's Bots
- * @author Aaron Yang - 10158 Scott's Bots
- * @author Harrison Womack - 10158 Scott's Bots
- * @version 1.0, 3/4/2024
- */
 public class PoseUpdater {
     private HardwareMap hardwareMap;
 

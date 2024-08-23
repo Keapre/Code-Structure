@@ -107,6 +107,9 @@ public class FilteredPIDFController {
         previousUpdateTimeNano = System.nanoTime();
     }
 
+    public void resetIntegral() {
+        errorIntegral = 0;
+    }
     /**
      * This is used to set the target position if the filtered PIDF is being run with current position and
      * target position inputs rather than error inputs.

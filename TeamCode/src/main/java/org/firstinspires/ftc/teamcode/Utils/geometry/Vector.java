@@ -7,10 +7,6 @@ package org.firstinspires.ftc.teamcode.Utils.geometry;
  * products of Points just don't seem right. Also, there are a few more methods in here that make
  * using Vectors a little easier than using a Point in polar coordinates.
  *
- * @author Anyi Lin - 10158 Scott's Bots
- * @author Aaron Yang - 10158 Scott's Bots
- * @author Harrison Womack - 10158 Scott's Bots
- * @version 1.0, 3/11/2024
  */
 public class Vector {
 
@@ -22,6 +18,11 @@ public class Vector {
     private double xComponent;
     private double yComponent;
 
+    public void scaleBy(double a){
+        xComponent = xComponent * a;
+        yComponent = yComponent * a;
+        theta = theta * a;
+    }
     /**
      * This creates a new Vector with zero magnitude and direction.
      */
@@ -126,6 +127,8 @@ public class Vector {
      *
      * @return returns the x component.
      */
+
+
     public double getXComponent() {
         return xComponent;
     }

@@ -6,14 +6,7 @@ import org.firstinspires.ftc.teamcode.Utils.geometry.PoseUpdater;
 
 import java.util.ArrayList;
 
-/**
- * This is the DashboardPoseTracker class. This tracks the pose history of the robot through a
- * PoseUpdater, adding to the pose history at specified increments of time and storing the history
- * for a specified length of time.
- *
- * @author Anyi Lin - 10158 Scott's Bots
- * @version 1.0, 5/13/2024
- */
+
 public class DashboardPoseTracker {
     private double[] xPositions;
     private double[] yPositions;

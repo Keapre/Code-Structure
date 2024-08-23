@@ -1,6 +1,6 @@
 package org.firstinspires.ftc.teamcode.Utils.geometry;
 
-import org.firstinspires.ftc.teamcode.pedroPathing.pathGeneration.Vector;
+
 
 /**
  * This is the Pose class. It defines poses in 2D space, like the Pose2D class in Road Runner except
@@ -8,8 +8,6 @@ import org.firstinspires.ftc.teamcode.pedroPathing.pathGeneration.Vector;
  * two coordinates defining a position and a third value for the heading, so basically just defining
  * any position and orientation the robot can be at, unless your robot can fly for whatever reason.
  *
- * @author Anyi Lin - 10158 Scott's Bots
- * @version 1.0, 4/2/2024
  */
 public class Pose {
     private double x;
