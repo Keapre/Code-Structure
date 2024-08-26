@@ -2,13 +2,16 @@ package org.firstinspires.ftc.teamcode.Subsystem.Drive;
 
 import com.acmerobotics.dashboard.canvas.Canvas;
 
+import com.acmerobotics.roadrunner.ftc.DownsampledWriter;
+import com.acmerobotics.roadrunner.ftc.LazyImu;
 import com.arcrobotics.ftclib.controller.PIDFController;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.Gamepad;
 import com.qualcomm.robotcore.hardware.HardwareMap;
-
+import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
+import org.firstinspires.ftc.teamcode.Subsystem.Drive.Localizer.BetterLocalizer;
 import org.firstinspires.ftc.teamcode.Subsystem.Sensors;
 import org.firstinspires.ftc.teamcode.Utils.Control.CustomFilteredPIDFCoefficients;
 import org.firstinspires.ftc.teamcode.Utils.Dashboard.TelemetryUtil;
@@ -17,16 +20,42 @@ import org.firstinspires.ftc.teamcode.Utils.Wrappers.SmoothMotor;
 import org.firstinspires.ftc.teamcode.Utils.geometry.DriveVector;
 import org.firstinspires.ftc.teamcode.Utils.geometry.Pose;
 import org.firstinspires.ftc.teamcode.Utils.geometry.PoseUpdater;
+import org.firstinspires.ftc.teamcode.Utils.messages.PoseMessage;
 import org.firstinspires.ftc.teamcode.Utils.pubSub.Subsystem;
 import org.firstinspires.ftc.teamcode.Utils.Control.FilteredPIDFController;
 
+import java.lang.Math;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedList;
 import java.util.List;
+import com.acmerobotics.dashboard.canvas.Canvas;
+import com.acmerobotics.dashboard.config.Config;
+import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
+import com.acmerobotics.roadrunner.*;
 
 
+@SuppressWarnings("unused")
 public class DriveTrain extends Subsystem {
+    public static class Params {
+        // IMU orientation
+        // TODO: fill in these values based on
+        //   see https://ftc-docs.firstinspires.org/en/latest/programming_resources/imu/imu.html?highlight=imu#physical-hub-mounting
+        public RevHubOrientationOnRobot.LogoFacingDirection logoFacingDirection =
+                RevHubOrientationOnRobot.LogoFacingDirection.UP;
+        public RevHubOrientationOnRobot.UsbFacingDirection usbFacingDirection =
+                RevHubOrientationOnRobot.UsbFacingDirection.FORWARD;
 
-    Pose start;
+        // drive model parameters
+        public double inPerTick = 1;
+        public double lateralInPerTick = inPerTick;
+        public double trackWidthTicks = 0;
+    }
+
+    Pose2d start;
+    public Pose2d pose;
+    public final LazyImu lazyImu;
+    BetterLocalizer betterLocalizer;
     SmoothMotor leftFront,rightFront,leftBack,rightBack;
 
     private final List<SmoothMotor> motors;
@@ -34,10 +63,8 @@ public class DriveTrain extends Subsystem {
     public static double lateralMultiplier = 2;
 
     public static double headingMultiplier = 1;
-    private Pose targetPose;
+    private Pose2d targetPose;
     public DriveVector targetVector = new DriveVector();
-    public PoseUpdater poseUpdater;
-
     public double xThreeshold = 1,yTreeshold = 1,headingThreeshold = 5;
     public double finalxThreeshold = 0.5,finalyTreeshold = 0.5,finalheadingThreeshold = 2.5;
 
@@ -56,8 +83,16 @@ public class DriveTrain extends Subsystem {
     public static CustomFilteredPIDFCoefficients xPidCof = new CustomFilteredPIDFCoefficients(0,0,0,0.5,0),yPidCof = new CustomFilteredPIDFCoefficients(0,0,0,0.5,0),headingPidCof = new CustomFilteredPIDFCoefficients(0,0,0,0.5,0);
     long perfectHeadingTimeStart = System.currentTimeMillis();
     public static FilteredPIDFController xPid = new FilteredPIDFController(xPidCof),
+
     yPid = new FilteredPIDFController(yPidCof),
     headingPid = new FilteredPIDFController(headingPidCof);
+    public final LinkedList<Pose2d> poseHistory = new LinkedList<>();
+
+    public final DownsampledWriter estimatedPoseWriter = new DownsampledWriter("ESTIMATED_POSE", 50_000_000);
+    private final DownsampledWriter targetPoseWriter = new DownsampledWriter("TARGET_POSE", 50_000_000);
+    private final DownsampledWriter driveCommandWriter = new DownsampledWriter("DRIVE_COMMAND", 50_000_000);
+    private final DownsampledWriter mecanumCommandWriter = new DownsampledWriter("MECANUM_COMMAND", 50_000_000);
+
     public static PIDFController finalXPID = new PIDFController(0.035, 0.0,0.0,0);
     public static PIDFController finalYPID = new PIDFController(0.1, 0.0,0.0,0);
     public static PIDFController finalTurnPID = new PIDFController(0.01, 0.0,0.0,0);
@@ -65,6 +100,7 @@ public class DriveTrain extends Subsystem {
         MANUAL,
         PID,
         BRAKE,
+        GO_TO_POINT,
         FINAL_ADJUSTEMENT,
         WAIT_AT_POINT
     }
@@ -78,10 +114,13 @@ public class DriveTrain extends Subsystem {
     };
     public RunMode runMode;
     Sensors sensors;
+    public static Params PARAMS = new Params();
+    Pose2d poseWithoutBacktracking = new Pose2d(0.0, 0.0, 0.0);
+    double[] OverallError = new double[3];
 
     double tolerancePoint = 1.5;
     boolean transvitive = false;
-    public DriveTrain(HardwareMap hardwareMap, Pose start, Sensors sensors) {
+    public DriveTrain(HardwareMap hardwareMap, Pose2d start, Sensors sensors) {
         this.sensors = sensors;
         leftFront = new SmoothMotor(hardwareMap.get(DcMotorEx.class,"leftFront"),sensors);
         leftBack = new SmoothMotor(hardwareMap.get(DcMotorEx.class,"leftBack"),sensors);
@@ -93,8 +132,12 @@ public class DriveTrain extends Subsystem {
         setModeMotors();
         runMode = RunMode.MANUAL;
         this.start = start;
-        poseUpdater = new PoseUpdater(hardwareMap);
-        poseUpdater.setStartingPose(start);
+        lazyImu = new LazyImu(hardwareMap, "imu", new RevHubOrientationOnRobot(
+                PARAMS.logoFacingDirection, PARAMS.usbFacingDirection));
+
+        pose = start;
+        betterLocalizer = new BetterLocalizer(hardwareMap,lazyImu.get(),PARAMS.inPerTick,this);
+
 
     }
 
@@ -102,7 +145,7 @@ public class DriveTrain extends Subsystem {
     public boolean reachedTarget(){
         if(runMode == RunMode.BRAKE) return true;
 
-        if(Utils.calculateDistanceBetweenPoints(poseUpdater.getPose(),targetPose) <= tolerancePoint) {
+        if(Utils.calculateDistanceBetweenPoints(pose,targetPose) <= tolerancePoint) {
             return true;
         }
 
@@ -142,7 +185,7 @@ public class DriveTrain extends Subsystem {
         if(runMode == RunMode.PID) this.UPDATABLE = true;
     }
 
-    public void goToPoint(Pose targetPose,boolean adjustement,boolean transitive){
+    public void goToPoint(Pose2d targetPose,boolean adjustement,boolean transitive){
         this.finalAdjustment = adjustement;
         this.transvitive = transitive;
         setTargetPose(targetPose);
@@ -155,20 +198,23 @@ public class DriveTrain extends Subsystem {
 
         leftFront.setTargetPower((powerVector.getX() - powerVector.getY() - powerVector.getZ()) * (1 - actualKs) + actualKs * Math.signum(powerVector.getX() - powerVector.getY() - powerVector.getZ()));
         rightFront.setTargetPower((powerVector.getX() + powerVector.getY() + powerVector.getZ()) * (1 - actualKs) + actualKs * Math.signum(powerVector.getX() + powerVector.getY() + powerVector.getZ()));
-        leftBack.setTargetPower((powerVector.getX() + powerVector.getY() - powerVector.getZ()) * (1 - actualKs) + actualKs * Math.signum(powerVector.getX() + powerVector.getY() - powerVector.getZ()));
-        rightBack.setTargetPower((powerVector.getX() - powerVector.getY() + powerVector.getZ()) * (1 - actualKs) + actualKs * Math.signum(powerVector.getX() - powerVector.getY() + powerVector.getZ()));
+        leftBack.setTargetPower((powerVector.getX() + powerVector.getY()- powerVector.getZ()) * (1 - actualKs) + actualKs * Math.signum(powerVector.getX()+ powerVector.getY()- powerVector.getZ()));
+        rightBack.setTargetPower((powerVector.getX()- powerVector.getY()+ powerVector.getZ()) * (1 - actualKs) + actualKs * Math.signum(powerVector.getX() - powerVector.getY() + powerVector.getZ()));
     }
 
 
     public void updateState() {
-        poseUpdater.update();
+        updatePoseEstimate();
         calculateErrors();
         updateTelemetry();
         switch (runMode){
             case MANUAL:
                 powerVector = new DriveVector(targetVector.getX(), targetVector.getY(), targetVector.getZ());
-                powerVector = DriveVector.rotateBy(powerVector, poseUpdater.getPose().getHeading());
+                powerVector = DriveVector.rotateBy(powerVector, pose.heading.toDouble());
                 powerVector = new DriveVector(powerVector.getX(), powerVector.getY() * lateralMultiplier, targetVector.getZ());
+                break;
+            case GO_TO_POINT:
+                
                 break;
             case PID:
                 setMinPowersToOvercomeFriction();
@@ -214,12 +260,12 @@ public class DriveTrain extends Subsystem {
         headingPid.resetIntegral();
     }
     public void calculateErrors() {
-        double deltaX = targetPose.getX() - poseUpdater.getPose().getX();
-        double deltaY = targetPose.getY() - poseUpdater.getPose().getY();
+        double deltaX = targetPose.position.x - pose.position.x;
+        double deltaY = targetPose.position.y - pose.position.y;
 
-        xError = deltaX * Math.cos(poseUpdater.getPose().getHeading()) + deltaY * Math.sin(poseUpdater.getPose().getHeading());
-        yError = deltaY * Math.cos(poseUpdater.getPose().getHeading()) - deltaX * Math.sin(poseUpdater.getPose().getHeading());
-        turnError = targetPose.getHeading() - poseUpdater.getPose().getHeading();
+        xError = deltaX * Math.cos(pose.heading.toDouble()) + deltaY * Math.sin(pose.heading.toDouble());
+        yError = deltaY * Math.cos(pose.heading.toDouble()) - deltaX * Math.sin(pose.heading.toDouble());
+        turnError = targetPose.heading.toDouble() - pose.heading.toDouble();
 
         while(Math.abs(turnError) > Math.PI ){
             turnError -= Math.PI * 2 * Math.signum(turnError);
@@ -240,7 +286,7 @@ public class DriveTrain extends Subsystem {
         if (drive.getMagnitude() <= 0.05){
             drive.scaleBy(0);
         }
-        drive = new DriveVector(drive.getX(),drive.getY(),turn);
+        drive = new DriveVector(pose.position.x,pose.position.y,turn);
     }
     public boolean isBusy() {
         return runMode != RunMode.WAIT_AT_POINT;
@@ -255,21 +301,155 @@ public class DriveTrain extends Subsystem {
 //        TelemetryUtil.packet.put("maxPower", maxPower);
 
         TelemetryUtil.packet.fieldOverlay().setStroke("red");
-        TelemetryUtil.packet.fieldOverlay().strokeCircle(targetPose.getX(), targetPose.getY(), xThreeshold);
+        TelemetryUtil.packet.fieldOverlay().strokeCircle(targetPose.position.x, targetPose.position.y, xThreeshold);
 
         Canvas canvas = TelemetryUtil.packet.fieldOverlay();
         canvas.setStroke("blue");
-        canvas.strokeLine(poseUpdater.getPose().getX(), poseUpdater.getPose().getY(), targetPose.getX(), targetPose.getY());
+        canvas.strokeLine(pose.position.x, pose.position.y, targetPose.position.x, targetPose.position.y);
+    }
+
+    private double lastDrift = 0.0;
+    public static double angleError = 0.0;
+
+    public void correctCurrentPose(ArrayList<ArrayList<Double>> changesInPos, ArrayList<Pose2d> posHistory, ArrayList<Twist2d> twistChanges, double totalAngleDrift) {
+        angleError += (totalAngleDrift - lastDrift);
+
+        //loop through each estimated pose
+        for (int i = 0; i < changesInPos.size(); i++) {
+            double timeDrift = 1.0 / changesInPos.size() * totalAngleDrift;
+            correctThePose(
+                    new double[]{
+                            changesInPos.get(i).get(0),
+                            changesInPos.get(i).get(1),
+                            changesInPos.get(i).get(2) + timeDrift},
+
+                    posHistory.get(i),
+                    twistChanges.get(i));
+        }
+
+        changesInPos.clear();
+        posHistory.clear();
+        twistChanges.clear();
+
+        lastDrift = angleError;
+    }
+
+
+    private double[] lastErrors = new double[3];
+    private double[] errors = new double[2];
+
+    public void correctThePose(double[] change, Pose2d prevPose, Twist2d estTwist) {
+        Twist2dDual<Time> imuTwist = new Twist2dDual<>(
+                new Vector2dDual<>(
+                        new DualNum<Time>(new double[]{
+                                change[0],
+                                0.0,
+                        }).times(PARAMS.inPerTick),
+                        new DualNum<Time>(new double[]{
+                                change[1],
+                                0.0,
+                        }).times(PARAMS.inPerTick)
+                ),
+                new DualNum<>(new double[]{
+                        change[2],
+                        0.0,
+                })
+        );
+
+        //because RR does not support subtracting twists or poses
+
+        //Find pose using odo twist
+        Pose2d previousPose = prevPose;
+        previousPose = previousPose.plus(estTwist);
+        double[] prevPosePoses = new double[]{previousPose.position.x, previousPose.position.y};
+
+        //Find pose using imu twist
+        Pose2d newPose = prevPose;
+        newPose = newPose.plus(imuTwist.value());
+        double[] newPosePoses = new double[]{newPose.position.x, newPose.position.y};
+
+        for (int i = 0; i < 2; i++) {
+            errors[i] += newPosePoses[i] - prevPosePoses[i];
+        }
+
+        pose = new Pose2d(
+                pose.position.x + errors[0] - lastErrors[0],
+                pose.position.y + errors[1] - lastErrors[1],
+                (pose.heading.plus(angleError - lastErrors[2])).toDouble()
+        );
+
+        lastErrors = new double[]{
+                errors[0],
+                errors[1],
+                angleError
+        };
+    }
+    public PoseVelocity2d updatePoseEstimate() {
+        Twist2dDual<Time> twist = betterLocalizer.update();
+        pose = pose.plus(twist.value());
+
+        poseWithoutBacktracking = poseWithoutBacktracking.plus(twist.value());
+
+        OverallError = new double[]{
+                Math.abs(poseWithoutBacktracking.position.x - pose.position.x),
+                Math.abs(poseWithoutBacktracking.position.y - pose.position.y),
+                Math.abs(poseWithoutBacktracking.heading.minus(pose.heading))
+        };
+
+        poseHistory.add(pose);
+
+        while (poseHistory.size() > 100) {
+            poseHistory.removeFirst();
+        }
+
+        estimatedPoseWriter.write(new PoseMessage(pose));
+
+        //DW return value never used
+        return twist.velocity().value();
+    }
+    double[] percentage_Correction = new double[2], prevPose = new double[2];
+    private ArrayList<Double> totalChange = new ArrayList<>(Arrays.asList(0.0, 0.0));
+
+
+    // This returns the effectiveness of the Localizer in percentage
+    public double[] totalMovement() {
+        double[] currentPose = new double[]{pose.position.x, pose.position.y};
+        double[] difference = new double[2];
+        for (int i = 0; i < 2; i++) {
+            difference[i] = Math.abs(currentPose[i] - prevPose[i]);
+            totalChange.set(i, totalChange.get(i) + difference[i]);
+            if (!totalChange.contains(0.0)) {
+                percentage_Correction[i] = 100 * Math.abs(OverallError[i]) / totalChange.get(i);
+            }
+        }
+        prevPose = currentPose;
+        return percentage_Correction;
+    }
+    private void drawPoseHistory(Canvas c) {
+        double[] xPoints = new double[poseHistory.size()];
+        double[] yPoints = new double[poseHistory.size()];
+
+        int i = 0;
+        for (Pose2d t : poseHistory) {
+            xPoints[i] = t.position.x;
+            yPoints[i] = t.position.y;
+
+            i++;
+        }
+
+        c.setStrokeWidth(1);
+        c.setStroke("#3F51B5");
+        c.strokePolyline(xPoints, yPoints);
     }
 
     public void PIDF() {
-        double globalXError = targetPose.getX() - poseUpdater.getPose().getX();
-        double globalYError = targetPose.getY() - poseUpdater.getPose().getY();
+        double globalXError = targetPose.position.x - pose.position.x;
+        double globalYError = targetPose.position.y - pose.position.y;
 
-        double localXError = globalXError * Math.cos(poseUpdater.getPose().getHeading()) + globalYError * Math.sin(poseUpdater.getPose().getHeading());
-        double localYError = globalYError * Math.cos(poseUpdater.getPose().getHeading()) - globalXError * Math.sin(poseUpdater.getPose().getHeading());
+        double localXError = globalXError * Math.cos(pose.heading.toDouble()) + globalYError * Math.sin(pose.heading.toDouble());
+        double localYError = globalYError * Math.cos(pose.heading.toDouble()) - globalXError * Math.sin(pose.heading.toDouble());
 
-        double distanceToPoint = Utils.calculateDistanceBetweenPoints(poseUpdater.getPose(), targetPose);
+        double distanceToPoint = Utils.calculateDistanceBetweenPoints(pose, targetPose);
 
         double fwd,strafe,turn;
         if(Math.abs(distanceToPoint) < 20) {
@@ -335,7 +515,7 @@ public class DriveTrain extends Subsystem {
     }
 
 
-    public void setTargetPose(Pose pose){
+    public void setTargetPose(Pose2d pose){
         this.targetPose = pose;
     }
 
@@ -349,7 +529,7 @@ public class DriveTrain extends Subsystem {
 
 
 
-    public Pose getTargetPose(){
+    public Pose2d getTargetPose(){
         return targetPose;
     }
 

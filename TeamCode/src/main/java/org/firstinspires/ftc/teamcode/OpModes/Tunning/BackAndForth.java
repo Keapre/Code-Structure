@@ -46,14 +46,14 @@ public class BackAndForth extends LinearOpMode {
         );
 
         forward.addCondition(
-                () -> (dt.reachedTarget(1)),
+                () -> (dt.reachedTarget()),
                 () -> {
                     dt.setTargetPose(BackwardPose);
                 },back
         );
 
         back.addCondition(
-                () -> (dt.reachedTarget(1)),
+                () -> (dt.reachedTarget()),
                 () -> {
                     dt.setTargetPose(ForwardPose);
                 },forward
